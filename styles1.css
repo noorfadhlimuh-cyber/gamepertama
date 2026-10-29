@@ -1,0 +1,31 @@
+/* Mengatur body agar tidak bisa di-scroll / zoom dengan sentuhan (penting untuk game mobile) */
+body { 
+    touch-action: none; 
+    background-color: #0f172a; /* Warna latar belakang gelap khas Tailwind (slate-900) */
+    overflow: hidden;
+}
+
+/* Mengatur tampilan Canvas Game */
+#gameCanvas {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    background-color: #16a34a; /* Warna dasar lapangan (hijau) */
+}
+
+/* Animasi untuk memunculkan monster (Naga/Hiu) saat gol */
+@keyframes popFade {
+    0% { 
+        transform: scale(0); 
+        opacity: 1; 
+    }
+    50% { 
+        transform: scale(1.5); 
+        opacity: 1; 
+    }
+    100% { 
+        transform: scale(2); 
+        opacity: 0; 
+    }
+}

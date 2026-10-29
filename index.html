@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Game Sepak Bola Koin - Epic Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #111827; /* gray-900 */
+            touch-action: none; 
+            font-family: 'Inter', sans-serif;
+            user-select: none;
+        }
+        
+        #gameCanvas {
+            display: block;
+            margin: 0 auto;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.8);
+            max-width: 100%;
+            max-height: 100vh;
+            background-color: #16a34a; /* Base green */
+        }
+
+        .ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        
+        .interactive {
+            pointer-events: auto;
+        }
+
+        /* Start Screen Overlay */
+        #startScreen {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+            pointer-events: auto;
+        }
+
+        /* Animations */
+        @keyframes pulse-score {
+            0%, 100% { transform: scale(1); box-shadow: 0 0 10px rgba(255,255,255,0.2); }
+            50% { transform: scale(1.15); box-shadow: 0 0 30px rgba(255,255,255,0.8); }
+        }
+        .anim-goal-score {
+            animation: pulse-score 0.5s ease-in-out 4;
+        }
+
+        @keyframes popupAnim {
+            0% { transform: scale(0) rotate(-20deg); opacity: 0; }
+            50% { transform: scale(1.2) rotate(10deg); opacity: 1; }
+            80% { transform: scale(1) rotate(0deg); opacity: 1; }
+            100% { transform: scale(1) rotate(0deg); opacity: 0; }
+        }
+        .show-monster {
+            display: block !important;
+            animation: popupAnim 3s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+        }
+
+        /* Tambahan untuk Game Over & Fade Out */
+        #gameOverScreen {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.9);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            z-index: 100;
+            pointer-events: auto;
+        }
+        .persistent-monster {
+            font-size: 8rem;
+            filter: drop-shadow(0 10px 20px rgba(0,0,0,0.7));
+            text-align: center;
+            line-height: 1;
+            animation: pulse-score 2s infinite;
+        }
+        @media (min-width: 768px) {
+            .persistent-monster { font-size: 12rem; }
+        }
+        
+        .fade-out {
+            opacity: 0 !important;
+            transition: opacity 1.5s ease-in-out !important; /* Hilang perlahan */
+        }
+
+        /* Beast Emojis styling */
+        .beast-anim {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 8rem;
+            display: none;
+            filter: drop-shadow(0 10px 20px rgba(0,0,0,0.7));
+            z-index: 40;
+            text-align: center;
+            line-height: 1;
+        }
+        @media (min-width: 768px) {
+            .beast-anim { font-size: 12rem; }
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen">
+
+    <!-- Container Game -->
+    <div class="relative w-full max-w-4xl flex items-center justify-center h-screen md:h-auto">
+        
+        <canvas id="gameCanvas" width="800" height="500" class="rounded-xl border-8 border-gray-800"></canvas>
+        
+        <!-- UI Overlay -->
+        <div class="ui-layer p-4">
+            
+            <!-- Papan Skor -->
+            <div id="scoreboard" class="flex justify-between items-center bg-gray-900 bg-opacity-90 rounded-full px-6 py-2 mx-auto w-11/12 max-w-md shadow-[0_0_15px_rgba(0,0,0,0.5)] border-2 border-gray-700 transition-all duration-300">
+                <div class="flex items-center space-x-3 w-1/3 justify-start">
+                    <div class="w-6 h-6 rounded-full bg-red-500 border-2 border-white shadow-inner"></div>
+                    <span class="text-white font-extrabold text-3xl drop-shadow-md" id="scoreRed">0</span>
+                </div>
+                <div class="text-white font-black text-xl tracking-widest text-gray-400 w-1/3 text-center">VS</div>
+                <div class="flex items-center space-x-3 w-1/3 justify-end">
+                    <span class="text-white font-extrabold text-3xl drop-shadow-md" id="scoreBlue">0</span>
+                    <div class="w-6 h-6 rounded-full bg-blue-500 border-2 border-white shadow-inner"></div>
+                </div>
+            </div>
+
+            <!-- Pesan Informasi (Giliran / Gol) -->
+            <div class="flex flex-col items-center justify-center flex-grow mt-10">
+                <div id="messageBox" class="bg-black bg-opacity-80 text-white px-8 py-3 rounded-xl text-xl md:text-2xl font-bold transform transition-all duration-300 shadow-xl opacity-0">
+                    Mulai Pertandingan!
+                </div>
+            </div>
+
+            <div class="flex justify-center pb-2 interactive mt-auto">
+                <button onclick="resetGame(true)" class="bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm font-semibold py-2 px-6 rounded-full shadow-lg transition-colors border border-gray-600 z-40">
+                    Reset Pertandingan
+                </button>
+            </div>
+        </div>
+
+        <!-- Start Screen -->
+        <div id="startScreen" class="rounded-xl">
+            <div class="text-center p-8 bg-gray-900 border-4 border-gray-700 rounded-3xl shadow-2xl max-w-sm">
+                <h1 class="text-4xl font-black text-white mb-2 tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-blue-500">SEPAK BOLA KOIN</h1>
+                <p class="text-gray-400 mb-8 text-sm">Tarik ke belakang untuk menembak ke depan. Cetak gol ke gawang lawan!</p>
+                <button onclick="startGame()" class="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-400 hover:to-green-500 text-white font-bold py-4 rounded-xl shadow-[0_0_20px_rgba(34,197,94,0.4)] transform hover:scale-105 transition-all text-xl">
+                    ⚽ TAP TO START
+                </button>
+            </div>
+        </div>
+
+        <!-- Emojis Animasi Gol -->
+        <div id="animRedGoal" class="beast-anim text-red-500">
+            <div>🐉🔥</div>
+            <div class="text-3xl md:text-5xl font-black mt-[-20px] text-white" style="-webkit-text-stroke: 2px red;">GOL MERAH!</div>
+        </div>
+        <div id="animBlueGoal" class="beast-anim text-blue-500">
+            <div>🦈💦</div>
+            <div class="text-3xl md:text-5xl font-black mt-[-20px] text-white" style="-webkit-text-stroke: 2px blue;">GOL BIRU!</div>
+        </div>
+
+        <!-- Layar Game Over -->
+        <div id="gameOverScreen" class="rounded-xl">
+            <div id="goMonster" class="persistent-monster mb-4"></div>
+            <h1 id="goText" class="text-5xl md:text-7xl font-black text-white mb-8 tracking-tight drop-shadow-[0_0_15px_rgba(255,255,255,0.8)]" style="-webkit-text-stroke: 2px black;">TIM MENANG!</h1>
+            <button onclick="resetGame(true)" class="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-400 hover:to-green-500 text-white font-bold py-4 px-10 rounded-xl shadow-[0_0_20px_rgba(34,197,94,0.4)] transform hover:scale-105 transition-all text-2xl interactive z-50">
+                🔄 MAIN LAGI
+            </button>
+        </div>
+
+    </div>
+
+    <script>
+        // --- WEB AUDIO API (Synthesizer Sound Effects) ---
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        // Suara Peluit Wasit
+        function playWhistle() {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(2000, audioCtx.currentTime);
+            osc.frequency.linearRampToValueAtTime(2400, audioCtx.currentTime + 0.1); 
+            
+            gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.5, audioCtx.currentTime + 0.05);
+            gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.4); 
+            
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.5);
+        }
+
+        // Suara Sorakan Penonton (White Noise filter)
+        function playCheer() {
+            if (!audioCtx) return;
+            
+            const bufferSize = audioCtx.sampleRate * 3; 
+            const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const data = buffer.getChannelData(0);
+            
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = Math.random() * 2 - 1;
+            }
+            
+            const noise = audioCtx.createBufferSource();
+            noise.buffer = buffer;
+            
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.value = 800;
+            filter.Q.value = 0.5;
+
+            const gainNode = audioCtx.createGain();
+            gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+            gainNode.gain.linearRampToValueAtTime(1.5, audioCtx.currentTime + 0.5); 
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 3); 
+            
+            noise.connect(filter);
+            filter.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            noise.start();
+        }
+
+        // --- SISTEM GAME & FISIKA ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreRedEl = document.getElementById('scoreRed');
+        const scoreBlueEl = document.getElementById('scoreBlue');
+        const messageBox = document.getElementById('messageBox');
+        const scoreboard = document.getElementById('scoreboard');
+
+        const FIELD_WIDTH = 800;
+        const FIELD_HEIGHT = 500;
+        const GOAL_Y_START = 175;
+        const GOAL_Y_END = 325;
+        const GOAL_DEPTH = 40;
+        const TILE_SIZE = 50; 
+        const WIN_SCORE = 3;  
+
+        let messageTimeout = null;
+
+        let state = {
+            scoreRed: 0,
+            scoreBlue: 0,
+            turn: 'red',
+            isDragging: false,
+            draggedEntity: null,
+            dragStart: { x: 0, y: 0 },
+            dragCurrent: { x: 0, y: 0 },
+            gameState: 'INIT', // INIT, PLAYING, GOAL, GAMEOVER
+            isMoving: false
+        };
+
+        class Entity {
+            constructor(x, y, radius, mass, type) {
+                this.x = x;
+                this.y = y;
+                this.radius = radius;
+                this.mass = mass;
+                this.type = type; 
+                this.vx = 0;
+                this.vy = 0;
+                this.restitution = 0.8;
+                this.friction = 0.982; 
+            }
+
+            draw(ctx) {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                
+                let gradient = ctx.createRadialGradient(
+                    this.x - this.radius/3, this.y - this.radius/3, this.radius/10,
+                    this.x, this.y, this.radius
+                );
+
+                if (this.type === 'red') {
+                    gradient.addColorStop(0, '#fca5a5'); 
+                    gradient.addColorStop(1, '#b91c1c'); 
+                } else if (this.type === 'blue') {
+                    gradient.addColorStop(0, '#93c5fd'); 
+                    gradient.addColorStop(1, '#1d4ed8'); 
+                } else {
+                    gradient.addColorStop(0, '#ffffff'); 
+                    gradient.addColorStop(1, '#9ca3af'); 
+                }
+
+                ctx.fillStyle = gradient;
+                ctx.fill();
+                
+                ctx.lineWidth = 2.5;
+                ctx.strokeStyle = this.type === 'ball' ? '#1f2937' : '#ffffff';
+                ctx.stroke();
+
+                if(this.type !== 'ball') {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius - 5, 0, Math.PI * 2);
+                    ctx.lineWidth = 1.5;
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                    ctx.stroke();
+                } else {
+                    ctx.fillStyle = '#111827';
+                    ctx.beginPath(); ctx.arc(this.x, this.y, this.radius * 0.4, 0, Math.PI*2); ctx.fill();
+                }
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vx *= this.friction;
+                this.vy *= this.friction;
+
+                if (Math.abs(this.vx) < 0.2) this.vx = 0;
+                if (Math.abs(this.vy) < 0.2) this.vy = 0;
+            }
+        }
+
+        let entities = [];
+
+        function setupFormation() {
+            entities = [];
+            // Bola di tengah
+            entities.push(new Entity(FIELD_WIDTH/2, FIELD_HEIGHT/2, 14, 0.4, 'ball'));
+
+            // Tim Merah
+            entities.push(new Entity(150, FIELD_HEIGHT/2, 24, 1, 'red'));
+            entities.push(new Entity(250, 150, 24, 1, 'red'));
+            entities.push(new Entity(250, 350, 24, 1, 'red'));
+
+            // Tim Biru
+            entities.push(new Entity(FIELD_WIDTH - 150, FIELD_HEIGHT/2, 24, 1, 'blue'));
+            entities.push(new Entity(FIELD_WIDTH - 250, 150, 24, 1, 'blue'));
+            entities.push(new Entity(FIELD_WIDTH - 250, 350, 24, 1, 'blue'));
+        }
+
+        function startGame() {
+            initAudio();
+            document.getElementById('startScreen').style.display = 'none';
+            resetGame(true);
+        }
+
+        function resetGame(fullReset = false) {
+            setupFormation();
+            state.gameState = 'PLAYING';
+            state.isMoving = false;
+            state.isDragging = false;
+            state.draggedEntity = null;
+            document.getElementById('gameOverScreen').style.display = 'none';
+            
+            if (fullReset) {
+                state.scoreRed = 0;
+                state.scoreBlue = 0;
+                state.turn = 'red'; // Default mulai tim merah
+                scoreRedEl.innerText = 0;
+                scoreBlueEl.innerText = 0;
+            }
+            // state.turn akan dipertahankan nilainya jika bukan fullReset (misal setelah gol)
+            
+            updateMessage(`Kick-off: Giliran Tim ${state.turn === 'red' ? 'Merah' : 'Biru'}`, state.turn === 'red' ? 'text-red-400' : 'text-blue-400');
+            playWhistle();
+        }
+
+        function resolveCollision(e1, e2) {
+            let dx = e2.x - e1.x;
+            let dy = e2.y - e1.y;
+            let dist = Math.hypot(dx, dy);
+            let minDist = e1.radius + e2.radius;
+
+            if (dist < minDist) {
+                if(dist === 0) { dx = 1; dist = 1; }
+                let overlap = minDist - dist;
+                let nx = dx / dist, ny = dy / dist;
+                
+                let totalMass = e1.mass + e2.mass;
+                let m1Ratio = e2.mass / totalMass;
+                let m2Ratio = e1.mass / totalMass;
+
+                e1.x -= nx * overlap * m1Ratio;
+                e1.y -= ny * overlap * m1Ratio;
+                e2.x += nx * overlap * m2Ratio;
+                e2.y += ny * overlap * m2Ratio;
+
+                let vx = e2.vx - e1.vx;
+                let vy = e2.vy - e1.vy;
+                let velAlongNormal = vx * nx + vy * ny;
+
+                if (velAlongNormal > 0) return;
+
+                let e = Math.min(e1.restitution, e2.restitution);
+                let j = -(1 + e) * velAlongNormal;
+                j /= (1 / e1.mass + 1 / e2.mass);
+
+                let impulseX = j * nx;
+                let impulseY = j * ny;
+
+                e1.vx -= impulseX / e1.mass;
+                e1.vy -= impulseY / e1.mass;
+                e2.vx += impulseX / e2.mass;
+                e2.vy += impulseY / e2.mass;
+            }
+        }
+
+        function checkWallCollisions(e) {
+            if (e.y - e.radius < 0) {
+                e.y = e.radius; e.vy *= -e.restitution;
+            } else if (e.y + e.radius > FIELD_HEIGHT) {
+                e.y = FIELD_HEIGHT - e.radius; e.vy *= -e.restitution;
+            }
+
+            let inGoalY = (e.y > GOAL_Y_START && e.y < GOAL_Y_END);
+
+            if (e.x - e.radius < 0) {
+                if (inGoalY && e.type === 'ball') {
+                    if(e.x < -GOAL_DEPTH / 2) handleGoal('blue'); // Gol untuk Biru
+                } else {
+                    e.x = e.radius; e.vx *= -e.restitution;
+                }
+            } else if (e.x + e.radius > FIELD_WIDTH) {
+                if (inGoalY && e.type === 'ball') {
+                    if(e.x > FIELD_WIDTH + GOAL_DEPTH / 2) handleGoal('red'); // Gol untuk Merah
+                } else {
+                    e.x = FIELD_WIDTH - e.radius; e.vx *= -e.restitution;
+                }
+            }
+        }
+
+        function triggerGameOver(winningTeam) {
+            state.gameState = 'GAMEOVER';
+            const goScreen = document.getElementById('gameOverScreen');
+            const goMonster = document.getElementById('goMonster');
+            const goText = document.getElementById('goText');
+            
+            goScreen.style.display = 'flex';
+            
+            if (winningTeam === 'red') {
+                goMonster.innerHTML = '<div>🐉🔥</div>';
+                goMonster.className = 'persistent-monster text-red-500 mb-4';
+                goText.innerText = 'TIM MERAH MENANG!';
+                goText.style.color = '#ef4444';
+            } else {
+                goMonster.innerHTML = '<div>🦈💦</div>';
+                goMonster.className = 'persistent-monster text-blue-500 mb-4';
+                goText.innerText = 'TIM BIRU MENANG!';
+                goText.style.color = '#3b82f6';
+            }
+        }
+
+        function handleGoal(scoringTeam) {
+            if (state.gameState === 'GOAL' || state.gameState === 'GAMEOVER') return;
+            state.gameState = 'GOAL';
+            
+            scoreboard.classList.remove('anim-goal-score');
+            void scoreboard.offsetWidth; 
+            scoreboard.classList.add('anim-goal-score');
+
+            playCheer();
+
+            if (scoringTeam === 'red') {
+                state.scoreRed++;
+                scoreRedEl.innerText = state.scoreRed;
+                updateMessage('GOL MERAH! ⚽', 'text-red-500');
+                
+                let anim = document.getElementById('animRedGoal');
+                anim.classList.remove('show-monster');
+                void anim.offsetWidth;
+                anim.classList.add('show-monster');
+            } else {
+                state.scoreBlue++;
+                scoreBlueEl.innerText = state.scoreBlue;
+                updateMessage('GOL BIRU! ⚽', 'text-blue-500');
+                
+                let anim = document.getElementById('animBlueGoal');
+                anim.classList.remove('show-monster');
+                void anim.offsetWidth;
+                anim.classList.add('show-monster');
+            }
+
+            // Cek kemenangan
+            if (state.scoreRed >= WIN_SCORE || state.scoreBlue >= WIN_SCORE) {
+                setTimeout(() => {
+                    triggerGameOver(state.scoreRed >= WIN_SCORE ? 'red' : 'blue');
+                }, 2000); 
+                return;
+            }
+
+            // ATURAN BARU: Tim yang kebobolan berhak melakukan kick-off
+            // Jika merah cetak gol, maka yang kebobolan adalah biru, dan sebaliknya.
+            state.turn = scoringTeam === 'red' ? 'blue' : 'red';
+
+            // Jeda 3 detik lalu setup field kembali
+            setTimeout(() => {
+                if (state.gameState !== 'GAMEOVER') resetGame(false);
+            }, 3000);
+        }
+
+        function updateMessage(text, colorClass = 'text-white') {
+            if (messageTimeout) clearTimeout(messageTimeout); 
+            
+            messageBox.innerText = text;
+            messageBox.classList.remove('fade-out'); 
+            messageBox.className = `bg-gray-900 bg-opacity-90 px-8 py-3 rounded-xl text-xl md:text-2xl font-bold transform transition-all duration-300 shadow-xl border-2 border-gray-700 ${colorClass}`;
+            messageBox.style.opacity = '1';
+            
+            messageBox.style.transform = 'scale(1.1)';
+            setTimeout(() => { messageBox.style.transform = 'scale(1)'; }, 150);
+            
+            messageTimeout = setTimeout(() => {
+                messageBox.classList.add('fade-out');
+            }, 3000);
+        }
+
+        function checkMoving() {
+            let moving = false;
+            for (let e of entities) {
+                if (Math.abs(e.vx) > 0.2 || Math.abs(e.vy) > 0.2) {
+                    moving = true; break;
+                }
+            }
+            
+            // Pindah giliran jika semua objek berhenti bergerak, dan game masih status PLAYING
+            if (state.isMoving && !moving && state.gameState === 'PLAYING') {
+                state.turn = state.turn === 'red' ? 'blue' : 'red';
+                updateMessage(`Giliran Tim ${state.turn === 'red' ? 'Merah' : 'Biru'}`, state.turn === 'red' ? 'text-red-400' : 'text-blue-400');
+            }
+            state.isMoving = moving;
+            return moving;
+        }
+
+        // --- KONTROL KETAPEL TERBALIK ---
+        function getMousePos(evt) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            let clientX = evt.clientX;
+            let clientY = evt.clientY;
+
+            if(evt.touches && evt.touches.length > 0) {
+                clientX = evt.touches[0].clientX;
+                clientY = evt.touches[0].clientY;
+            }
+
+            return {
+                x: (clientX - rect.left) * scaleX,
+                y: (clientY - rect.top) * scaleY
+            };
+        }
+
+        function handleInputStart(e) {
+            if (state.gameState !== 'PLAYING' || state.isMoving) return;
+            if(e.type === 'touchstart') e.preventDefault(); 
+
+            initAudio();
+
+            const pos = getMousePos(e);
+            for (let ent of entities) {
+                if (ent.type === state.turn) {
+                    let dist = Math.hypot(pos.x - ent.x, pos.y - ent.y);
+                    // Hitbox diperbesar 1.5x
+                    if (dist <= ent.radius * 1.5) {
+                        state.isDragging = true;
+                        state.draggedEntity = ent;
+                        state.dragStart = { x: ent.x, y: ent.y };
+                        state.dragCurrent = pos;
+                        break;
+                    }
+                }
+            }
+        }
+
+        function handleInputMove(e) {
+            if (!state.isDragging) return;
+            if(e.type === 'touchmove') e.preventDefault();
+            state.dragCurrent = getMousePos(e);
+        }
+
+        function handleInputEnd(e) {
+            if (!state.isDragging) return;
+            
+            let dx = state.dragStart.x - state.dragCurrent.x;
+            let dy = state.dragStart.y - state.dragCurrent.y;
+            
+            const MAX_POWER = 22;
+            const POWER_SCALAR = 0.15;
+            
+            let powerX = dx * POWER_SCALAR;
+            let powerY = dy * POWER_SCALAR;
+            
+            let powerMagnitude = Math.hypot(powerX, powerY);
+            if (powerMagnitude > MAX_POWER) {
+                let ratio = MAX_POWER / powerMagnitude;
+                powerX *= ratio;
+                powerY *= ratio;
+            }
+
+            if (powerMagnitude > 0.5) {
+                state.draggedEntity.vx = powerX;
+                state.draggedEntity.vy = powerY;
+                state.isMoving = true;
+            }
+
+            state.isDragging = false;
+            state.draggedEntity = null;
+        }
+
+        canvas.addEventListener('mousedown', handleInputStart);
+        canvas.addEventListener('mousemove', handleInputMove);
+        window.addEventListener('mouseup', handleInputEnd);
+        canvas.addEventListener('touchstart', handleInputStart, {passive: false});
+        canvas.addEventListener('touchmove', handleInputMove, {passive: false});
+        window.addEventListener('touchend', handleInputEnd);
+
+        // --- RENDER VISUAL ---
+        function drawField() {
+            // Latar Lapangan Kotak-kotak
+            for (let y = 0; y < FIELD_HEIGHT; y += TILE_SIZE) {
+                for (let x = 0; x < FIELD_WIDTH; x += TILE_SIZE) {
+                    ctx.fillStyle = ((x / TILE_SIZE + y / TILE_SIZE) % 2 === 0) ? '#16a34a' : '#15803d'; 
+                    ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+                }
+            }
+
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.strokeRect(10, 10, FIELD_WIDTH - 20, FIELD_HEIGHT - 20);
+
+            // Garis Tengah & Lingkaran
+            ctx.beginPath(); ctx.moveTo(FIELD_WIDTH / 2, 10); ctx.lineTo(FIELD_WIDTH / 2, FIELD_HEIGHT - 10); ctx.stroke();
+            ctx.beginPath(); ctx.arc(FIELD_WIDTH / 2, FIELD_HEIGHT / 2, 70, 0, Math.PI * 2); ctx.stroke();
+            ctx.beginPath(); ctx.arc(FIELD_WIDTH / 2, FIELD_HEIGHT / 2, 6, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
+
+            // Kotak Penalti
+            ctx.strokeRect(10, 100, 120, 300);
+            ctx.strokeRect(10, 175, 50, 150);
+            ctx.strokeRect(FIELD_WIDTH - 130, 100, 120, 300);
+            ctx.strokeRect(FIELD_WIDTH - 60, 175, 50, 150);
+
+            // Jaring Merah (Gawang Kiri)
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+            ctx.fillRect(0, GOAL_Y_START, 10, GOAL_Y_END - GOAL_Y_START);
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = '#ef4444'; 
+            ctx.beginPath();
+            for(let i=GOAL_Y_START; i<=GOAL_Y_END; i+=8) {
+                ctx.moveTo(0, i); ctx.lineTo(10, i + 5);
+                ctx.moveTo(0, i + 5); ctx.lineTo(10, i);
+            }
+            ctx.stroke();
+
+            // Jaring Biru (Gawang Kanan)
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+            ctx.fillRect(FIELD_WIDTH - 10, GOAL_Y_START, 10, GOAL_Y_END - GOAL_Y_START); 
+            ctx.strokeStyle = '#3b82f6'; 
+            ctx.beginPath();
+            for(let i=GOAL_Y_START; i<=GOAL_Y_END; i+=8) {
+                ctx.moveTo(FIELD_WIDTH - 10, i); ctx.lineTo(FIELD_WIDTH, i + 5);
+                ctx.moveTo(FIELD_WIDTH - 10, i + 5); ctx.lineTo(FIELD_WIDTH, i);
+            }
+            ctx.stroke();
+
+            // Tiang Gawang
+            ctx.fillStyle = '#fff';
+            ctx.beginPath(); ctx.arc(10, GOAL_Y_START, 6, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(10, GOAL_Y_END, 6, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(FIELD_WIDTH-10, GOAL_Y_START, 6, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(FIELD_WIDTH-10, GOAL_Y_END, 6, 0, Math.PI*2); ctx.fill();
+        }
+
+        function drawDragIndicator() {
+            if (state.isDragging && state.draggedEntity) {
+                const startX = state.dragStart.x;
+                const startY = state.dragStart.y;
+                
+                // Panah terbalik menghadap sasaran lemparan
+                let dx = startX - state.dragCurrent.x;
+                let dy = startY - state.dragCurrent.y;
+                
+                const distance = Math.hypot(dx, dy);
+                if (distance < 5) return; 
+
+                const maxLen = 120; 
+                const scale = Math.min(1, maxLen / distance);
+                
+                const endX = startX + (dx * scale);
+                const endY = startY + (dy * scale);
+                
+                const angle = Math.atan2(dy, dx);
+                const headLen = 15; 
+
+                // Garis utama panah
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                ctx.lineTo(endX, endY);
+                ctx.lineWidth = 6;
+                ctx.strokeStyle = state.turn === 'red' ? 'rgba(255, 100, 100, 0.8)' : 'rgba(100, 150, 255, 0.8)';
+                ctx.lineCap = 'round';
+                ctx.stroke();
+
+                // Kepala Panah (Arrowhead)
+                ctx.beginPath();
+                ctx.moveTo(endX, endY);
+                ctx.lineTo(endX - headLen * Math.cos(angle - Math.PI / 6), endY - headLen * Math.sin(angle - Math.PI / 6));
+                ctx.moveTo(endX, endY);
+                ctx.lineTo(endX - headLen * Math.cos(angle + Math.PI / 6), endY - headLen * Math.sin(angle + Math.PI / 6));
+                ctx.lineWidth = 6;
+                ctx.stroke();
+            }
+        }
+
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            drawField();
+
+            if (!state.isDragging) {
+                for (let e of entities) e.update();
+
+                for (let i = 0; i < entities.length; i++) {
+                    for (let j = i + 1; j < entities.length; j++) {
+                        resolveCollision(entities[i], entities[j]);
+                    }
+                }
+
+                for (let e of entities) checkWallCollisions(e);
+            }
+
+            for (let e of entities) e.draw(ctx);
+
+            drawDragIndicator();
+            
+            // Mengecek apakah turn berganti
+            checkMoving();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        setupFormation();
+        drawField();
+        for (let e of entities) e.draw(ctx);
+        gameLoop();
+
+    </script>
+</body>
+</html>
+
